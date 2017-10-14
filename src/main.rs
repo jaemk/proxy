@@ -103,7 +103,7 @@ fn run() -> Result<()> {
              .short("r")
              .takes_value(true)
              .help("Value to override `Host` header with. \
-                    Defaults to the `hostname` of the supplied proxy: `<hostname>:<port>"))
+                    Defaults to the `hostname` of the supplied proxy: `<hostname>:<port>`"))
         .arg(Arg::with_name("port")
              .long("port")
              .short("p")
