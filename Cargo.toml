@@ -1,7 +1,11 @@
 [package]
-name = "proxy"
+name = "cli-proxy"
 version = "0.1.0"
 authors = ["James Kominick <james.kominick@gmail.com>"]
+
+[[bin]]
+name = "proxy"
+doc = false
 
 [dependencies]
 rouille = "1"
