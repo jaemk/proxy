@@ -21,6 +21,7 @@ error_chain! {
     foreign_links {
         LogInit(log::SetLoggerError);
         Proxy(rouille::proxy::FullProxyError);
+        SelfUpdate(self_update::errors::Error) #[cfg(feature="update")];
     }
     errors {
         UrlPrefix(s: String) {
@@ -93,7 +94,6 @@ fn run() -> Result<()> {
         .version(crate_version!())
         .about("Proxy server")
         .arg(Arg::with_name("proxy")
-             .required(true)
              .takes_value(true))
         .arg(Arg::with_name("debug")
              .long("debug")
@@ -101,7 +101,6 @@ fn run() -> Result<()> {
         .arg(Arg::with_name("replace_host")
              .long("replace-host")
              .short("r")
-             .required(false)
              .takes_value(true)
              .help("Value to override `Host` header with. \
                     Defaults to the `hostname` of the supplied proxy: `<hostname>:<port>"))
@@ -128,13 +127,11 @@ fn run() -> Result<()> {
                              .help("Skip download/update confirmation")
                              .long("no-confirm")
                              .short("y")
-                             .required(false)
                              .takes_value(false))
                         .arg(Arg::with_name("quiet")
                              .help("Suppress unnecessary download output (progress bar)")
                              .long("quiet")
                              .short("q")
-                             .required(false)
                              .takes_value(false))))
         .get_matches();
 
@@ -153,7 +150,7 @@ fn run() -> Result<()> {
         return Ok(())
     }
 
-    let proxy_addr = matches.value_of("proxy").unwrap();
+    let proxy_addr = matches.value_of("proxy").ok_or_else(|| "Missing <proxy> argument. See `--help`")?;
     if proxy_addr.trim().is_empty() {
         bail!("Invalid `proxy` address")
     }
