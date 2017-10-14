@@ -1,0 +1,13 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+authors = ["James Kominick <james.kominick@gmail.com>"]
+
+[dependencies]
+rouille = "1"
+log = "0.3"
+env_logger = "0.4"
+chrono = "0.4"
+clap = "2"
+error-chain = "0.11"
+
