@@ -1,11 +1,26 @@
 [package]
 name = "cli-proxy"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["James Kominick <james.kominick@gmail.com>"]
+license = "MIT"
+description = "cli proxy server"
+repository = "https://github.com/jaemk/proxy"
+readme = "README.md"
+keywords = ["cli", "proxy"]
+categories = ["command-line-utilities", "development-tools", "web-programming"]
+exclude = [
+    "static",
+    "media",
+    "assets",
+    "ci",
+]
 
 [[bin]]
 name = "proxy"
 doc = false
+
+[badges]
+travis-ci = { repository = "jaemk/proxy", branch = "master" }
 
 [dependencies]
 rouille = "1"
