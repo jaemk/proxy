@@ -10,4 +10,9 @@ env_logger = "0.4"
 chrono = "0.4"
 clap = "2"
 error-chain = "0.11"
+self_update = { version = "0.4", optional = true }
+
+[features]
+default = []
+update = ["self_update"]
 
