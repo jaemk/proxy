@@ -1,4 +1,8 @@
-# proxy [![Build Status](https://travis-ci.org/jaemk/proxy.svg?branch=master)](https://travis-ci.org/jaemk/proxy) [![crates.io:cli-proxy](https://img.shields.io/crates/v/cli-proxy.svg?label=cli-proxy)](https://crates.io/crates/cli-proxy)
+# proxy
+
+[![Build status](https://ci.appveyor.com/api/projects/status/4lkixob628mcx8x2/branch/master?svg=true)](https://ci.appveyor.com/project/jaemk/proxy/branch/master)
+[![Build Status](https://travis-ci.org/jaemk/proxy.svg?branch=master)](https://travis-ci.org/jaemk/proxy)
+[![crates.io:cli-proxy](https://img.shields.io/crates/v/cli-proxy.svg?label=cli-proxy)](https://crates.io/crates/cli-proxy)
 
 > command-line proxy server
 
