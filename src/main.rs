@@ -39,7 +39,17 @@ struct StaticConfig {
 }
 
 
-fn route_request(request: &Request, static_configs: &[StaticConfig], proxy_config: &ProxyConfig<String>) -> Result<Response> {
+#[derive(Debug, Clone)]
+struct SubProxyConfig {
+    prefix: String,
+    proxy: ProxyConfig<String>,
+}
+
+
+fn route_request(request: &Request,
+                 static_configs: &[StaticConfig],
+                 subproxy_configs: &[SubProxyConfig],
+                 proxy_config: &ProxyConfig<String>) -> Result<Response> {
     let url = request.url();
     for config in static_configs {
         if url.starts_with(&config.prefix) {
@@ -48,12 +58,18 @@ fn route_request(request: &Request, static_configs: &[StaticConfig], proxy_confi
             return Ok(rouille::match_assets(&asset_request, &config.directory))
         }
     }
-    let proxy_config = proxy_config.clone();
-    Ok(rouille::proxy::full_proxy(&request, proxy_config)?)
+    for config in subproxy_configs {
+        if url.starts_with(&config.prefix) {
+            return Ok(rouille::proxy::full_proxy(&request, config.proxy.clone())?)
+        }
+    }
+    Ok(rouille::proxy::full_proxy(&request, proxy_config.clone())?)
 }
 
 
-fn service(addr: &str, proxy_config: ProxyConfig<String>, static_configs: Vec<StaticConfig>) -> Result<()> {
+fn service(addr: &str, proxy_config: ProxyConfig<String>,
+           subproxy_configs: Vec<SubProxyConfig>,
+           static_configs: Vec<StaticConfig>) -> Result<()> {
     env_logger::LogBuilder::new()
         .format(|record| {
             format!("{} [{}] - [{}] -> {}",
@@ -69,12 +85,13 @@ fn service(addr: &str, proxy_config: ProxyConfig<String>, static_configs: Vec<St
     info!("** Serving on {:?} **", addr);
     info!("** Proxying to {:?} **", proxy_config.addr);
     info!("** Setting `Host` header: {:?} **", proxy_config.replace_host.as_ref().expect("missing replace_host"));
+    info!("** Serving sub-proxies: {:?} **", subproxy_configs);
     info!("** Serving static dirs: {:?} **", static_configs);
 
     rouille::start_server(&addr, move |request| {
         let start = time::Instant::now();
 
-        let response = match route_request(request, &static_configs, &proxy_config) {
+        let response = match route_request(request, &static_configs, &subproxy_configs, &proxy_config) {
             Ok(resp) => resp,
             Err(_) => {
                 Response::text("Something went wrong").with_status_code(500)
@@ -94,28 +111,41 @@ fn run() -> Result<()> {
         .version(crate_version!())
         .about("Proxy server")
         .arg(Arg::with_name("proxy")
+             .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
              .takes_value(true))
         .arg(Arg::with_name("debug")
+             .help("Print debug info")
              .long("debug")
              .takes_value(false))
-        .arg(Arg::with_name("replace_host")
-             .long("replace-host")
-             .short("r")
-             .takes_value(true)
-             .help("Value to override `Host` header with. \
-                    Defaults to the `hostname` of the supplied proxy: `<hostname>:<port>`"))
         .arg(Arg::with_name("port")
+             .help("Port to listen on")
              .long("port")
              .short("p")
              .takes_value(true)
-             .default_value("3000")
-             .help("Port to listen on"))
+             .default_value("3000"))
         .arg(Arg::with_name("public")
              .long("public")
              .help("Listen on `0.0.0.0` instead of `localhost`"))
-        .arg(Arg::with_name("static")
+        .arg(Arg::with_name("static-asset")
+             .help("Url prefix of static assets and the associated directory to serve files from.\n\
+                    Formatted as `<url-prefix>,<directory>`, \
+                    e.g. serve requests starting with `/static/` from the relative directory \
+                    `static`:\n    `--static /static/,static`.\n\
+                    Note, this argument can be provided multiple times.")
              .long("static")
              .short("s")
+             .takes_value(true)
+             .multiple(true)
+             .number_of_values(1))
+        .arg(Arg::with_name("sub-proxy")
+             .help("Url prefix of sub-proxies and the address to route requests to.\n\
+                    Formatted as `<url-prefix>,<address>`, \
+                    e.g. proxy requests starting with `/api/` to `localhost:4500` instead of \
+                    the \"main\" proxy.\n    \
+                    `--sub-proxy /api/,localhost:4500`\n\
+                    Note, this argument can be provided multiple times.")
+             .long("sub-proxy")
+             .short("P")
              .takes_value(true)
              .multiple(true)
              .number_of_values(1))
@@ -163,10 +193,10 @@ fn run() -> Result<()> {
     let port = matches.value_of("port").unwrap().parse::<u32>().chain_err(|| "Expected integer")?;
     let addr = format!("{}:{}", host, port);
 
-    let static_configs: Vec<StaticConfig> = matches.values_of("static").map(|vals| {
+    let static_configs: Vec<StaticConfig> = matches.values_of("static-asset").map(|vals| {
         vals.map(|val| {
             let parts = val.split(",").collect::<Vec<_>>();
-            if parts.len() != 2 || parts[1].is_empty() {
+            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
                 bail!("Invalid `--static` format. Expected `<url-prefix>,<path-root>`")
             }
             Ok(StaticConfig {
@@ -176,7 +206,23 @@ fn run() -> Result<()> {
         }).collect::<Result<Vec<_>>>()
     }).unwrap_or_else(|| Ok(vec![]))?;
 
-    service(&addr, proxy_config, static_configs)?;
+    let subproxy_configs: Vec<SubProxyConfig> = matches.values_of("sub-proxy").map(|proxies| {
+        proxies.map(|proxy| {
+            let parts = proxy.split(",").collect::<Vec<_>>();
+            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                bail!("Invalid `--sub-proxy` format. Expected `<url-prefix>,<proxy-addr>`")
+            }
+            Ok(SubProxyConfig {
+                prefix: parts[0].to_owned(),
+                proxy: ProxyConfig {
+                    addr: parts[1].to_owned(),
+                    replace_host: Some(parts[1].split(":").nth(0).unwrap().to_owned().into()),
+                }
+            })
+        }).collect::<Result<Vec<_>>>()
+    }).unwrap_or_else(|| Ok(vec![]))?;
+
+    service(&addr, proxy_config, subproxy_configs, static_configs)?;
 
     Ok(())
 }
