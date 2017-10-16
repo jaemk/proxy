@@ -109,8 +109,14 @@ fn service(addr: &str, proxy_config: ProxyConfig<String>,
 fn run() -> Result<()> {
     let matches = App::new("Proxy")
         .version(crate_version!())
-        .about("Proxy server")
-        .arg(Arg::with_name("proxy")
+        .about("Proxy server\n \
+                Command-line proxy intended for testing and development purposes. \
+                Supports proxying requests and serving static files.\n \
+                Order of precendence:\n \
+                - Static files\n \
+                - Routing to sub-proxies\n \
+                - Routing to the \"main\" proxy")
+        .arg(Arg::with_name("main-proxy")
              .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
              .takes_value(true))
         .arg(Arg::with_name("debug")
@@ -130,7 +136,7 @@ fn run() -> Result<()> {
              .help("Url prefix of static assets and the associated directory to serve files from.\n\
                     Formatted as `<url-prefix>,<directory>`, \
                     e.g. serve requests starting with `/static/` from the relative directory \
-                    `static`:\n    `--static /static/,static`.\n\
+                    `static`:\n    `--static /static/,static`\n\
                     Note, this argument can be provided multiple times.")
              .long("static")
              .short("s")
@@ -180,7 +186,7 @@ fn run() -> Result<()> {
         return Ok(())
     }
 
-    let proxy_addr = matches.value_of("proxy").ok_or_else(|| "Missing <proxy> argument. See `--help`")?;
+    let proxy_addr = matches.value_of("main-proxy").ok_or_else(|| "Missing <main-proxy> argument. See `--help`")?;
     if proxy_addr.trim().is_empty() {
         bail!("Invalid `proxy` address")
     }
