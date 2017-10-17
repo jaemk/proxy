@@ -26,11 +26,13 @@ Updates:
 ## Usage
 
 ```bash
-# - proxy requests to `localhost:3002`
 # - listen on `localhost:3000`
 # - serve requests starting with `/static/` from the relative path `static/`
 # - serve requests starting with `/media/`  from the absolute path `/abs/path/to/media
 # - serve requests starting with `/assets/` from the relative path `assets`
-proxy localhost:3002 --port 3000 --static /static/,static/ --static /media/,/abs/path/to/media --static /assets/,assets
+# - proxy requests starting with `/api/`    to  `localhost:4001`
+# - proxy requests starting with `/status/` to  `localhost:4002`
+# - proxy remaining requests to `localhost:3002`
+proxy --port 3000 --static /static/,static/ --static /media/,/abs/path/to/media -s /assets/,assets --sub-proxy /api/,localhost:4001 -P /status/,localhost:4002
 ```
 
