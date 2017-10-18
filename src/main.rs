@@ -111,11 +111,7 @@ fn run() -> Result<()> {
         .version(crate_version!())
         .about("Proxy server\n \
                 Command-line proxy intended for testing and development purposes. \
-                Supports proxying requests and serving static files.\n \
-                Order of precendence:\n \
-                - Static files\n \
-                - Routing to sub-proxies\n \
-                - Routing to the \"main\" proxy")
+                Supports proxying requests and serving static files.")
         .subcommand(SubCommand::with_name("self")
             .about("Self referential things")
             .subcommand(SubCommand::with_name("update")
@@ -131,7 +127,11 @@ fn run() -> Result<()> {
                      .short("q")
                      .takes_value(false))))
         .subcommand(SubCommand::with_name("serve")
-            .about("Run a proxy server")
+            .about("Run a proxy server\n\
+                    Request handling precendence:\n  \
+                    - Static files\n  \
+                    - Routing to sub-proxies\n  \
+                    - Routing to the \"main\" proxy")
             .arg(Arg::with_name("main-proxy")
                  .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
                  .takes_value(true)
@@ -150,10 +150,11 @@ fn run() -> Result<()> {
                  .long("public")
                  .help("Listen on `0.0.0.0` instead of `localhost`"))
             .arg(Arg::with_name("static-asset")
-                 .help("Url prefix of static-asset-requests and the associated directory to serve files from.\n\
-                        Formatted as `<url-prefix>,<directory>`, \
-                        e.g. serve requests starting with `/static/` from the relative directory \
-                        `static`:\n    `--static /static/,static`\n\
+                 .help("Url prefix of static-asset-requests and the associated directory to serve files from. \
+                        The url prefix will be stripped before looking in the specified directory. \
+                        Formatted as `<url-prefix>,<directory>`.\n\
+                        E.g. Serve requests starting with `/static/` from the relative directory `static`:\n    \
+                        `--static /static/,static`\n\
                         Note, this argument can be provided multiple times.")
                  .long("static")
                  .short("s")
@@ -161,10 +162,11 @@ fn run() -> Result<()> {
                  .multiple(true)
                  .number_of_values(1))
             .arg(Arg::with_name("sub-proxy")
-                 .help("Url prefix of sub-proxy-requests and the address to route requests to.\n\
-                        Formatted as `<url-prefix>,<address>`, \
-                        e.g. proxy requests starting with `/api/` to `localhost:4500` instead of \
-                        the \"main\" proxy.\n    \
+                 .help("Url prefix of sub-proxy-requests and the address to route requests to. \
+                        The url will not be altered when proxied. \
+                        Formatted as `<url-prefix>,<address>`.\n\
+                        E.g. Proxy requests starting with `/api/` to `localhost:4500` instead of \
+                        the \"main\" proxy:\n    \
                         `--sub-proxy /api/,localhost:4500`\n\
                         Note, this argument can be provided multiple times.")
                  .long("sub-proxy")
