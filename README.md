@@ -33,6 +33,6 @@ Updates:
 # - proxy requests starting with `/api/`    to  `localhost:4001`
 # - proxy requests starting with `/status/` to  `localhost:4002`
 # - proxy remaining requests to `localhost:3002`
-proxy --port 3000 --static /static/,static/ --static /media/,/abs/path/to/media -s /assets/,assets --sub-proxy /api/,localhost:4001 -P /status/,localhost:4002
+proxy serve --port 3000 --static /static/,static/ --static /media/,/abs/path/to/media -s /assets/,assets --sub-proxy /api/,localhost:4001 -P /status/,localhost:4002 localhost:3002
 ```
 

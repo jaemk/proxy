@@ -116,59 +116,62 @@ fn run() -> Result<()> {
                 - Static files\n \
                 - Routing to sub-proxies\n \
                 - Routing to the \"main\" proxy")
-        .arg(Arg::with_name("main-proxy")
-             .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
-             .takes_value(true))
-        .arg(Arg::with_name("debug")
-             .help("Print debug info")
-             .long("debug")
-             .takes_value(false))
-        .arg(Arg::with_name("port")
-             .help("Port to listen on")
-             .long("port")
-             .short("p")
-             .takes_value(true)
-             .default_value("3000"))
-        .arg(Arg::with_name("public")
-             .long("public")
-             .help("Listen on `0.0.0.0` instead of `localhost`"))
-        .arg(Arg::with_name("static-asset")
-             .help("Url prefix of static assets and the associated directory to serve files from.\n\
-                    Formatted as `<url-prefix>,<directory>`, \
-                    e.g. serve requests starting with `/static/` from the relative directory \
-                    `static`:\n    `--static /static/,static`\n\
-                    Note, this argument can be provided multiple times.")
-             .long("static")
-             .short("s")
-             .takes_value(true)
-             .multiple(true)
-             .number_of_values(1))
-        .arg(Arg::with_name("sub-proxy")
-             .help("Url prefix of sub-proxies and the address to route requests to.\n\
-                    Formatted as `<url-prefix>,<address>`, \
-                    e.g. proxy requests starting with `/api/` to `localhost:4500` instead of \
-                    the \"main\" proxy.\n    \
-                    `--sub-proxy /api/,localhost:4500`\n\
-                    Note, this argument can be provided multiple times.")
-             .long("sub-proxy")
-             .short("P")
-             .takes_value(true)
-             .multiple(true)
-             .number_of_values(1))
         .subcommand(SubCommand::with_name("self")
-                    .about("Self referential things")
-                    .subcommand(SubCommand::with_name("update")
-                        .about("Update to the latest binary release, replacing this binary")
-                        .arg(Arg::with_name("no_confirm")
-                             .help("Skip download/update confirmation")
-                             .long("no-confirm")
-                             .short("y")
-                             .takes_value(false))
-                        .arg(Arg::with_name("quiet")
-                             .help("Suppress unnecessary download output (progress bar)")
-                             .long("quiet")
-                             .short("q")
-                             .takes_value(false))))
+            .about("Self referential things")
+            .subcommand(SubCommand::with_name("update")
+                .about("Update to the latest binary release, replacing this binary")
+                .arg(Arg::with_name("no_confirm")
+                     .help("Skip download/update confirmation")
+                     .long("no-confirm")
+                     .short("y")
+                     .takes_value(false))
+                .arg(Arg::with_name("quiet")
+                     .help("Suppress unnecessary download output (progress bar)")
+                     .long("quiet")
+                     .short("q")
+                     .takes_value(false))))
+        .subcommand(SubCommand::with_name("serve")
+            .about("Run a proxy server")
+            .arg(Arg::with_name("main-proxy")
+                 .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
+                 .takes_value(true)
+                 .required(true))
+            .arg(Arg::with_name("debug")
+                 .help("Print debug info")
+                 .long("debug")
+                 .takes_value(false))
+            .arg(Arg::with_name("port")
+                 .help("Port to listen on")
+                 .long("port")
+                 .short("p")
+                 .takes_value(true)
+                 .default_value("3000"))
+            .arg(Arg::with_name("public")
+                 .long("public")
+                 .help("Listen on `0.0.0.0` instead of `localhost`"))
+            .arg(Arg::with_name("static-asset")
+                 .help("Url prefix of static-asset-requests and the associated directory to serve files from.\n\
+                        Formatted as `<url-prefix>,<directory>`, \
+                        e.g. serve requests starting with `/static/` from the relative directory \
+                        `static`:\n    `--static /static/,static`\n\
+                        Note, this argument can be provided multiple times.")
+                 .long("static")
+                 .short("s")
+                 .takes_value(true)
+                 .multiple(true)
+                 .number_of_values(1))
+            .arg(Arg::with_name("sub-proxy")
+                 .help("Url prefix of sub-proxy-requests and the address to route requests to.\n\
+                        Formatted as `<url-prefix>,<address>`, \
+                        e.g. proxy requests starting with `/api/` to `localhost:4500` instead of \
+                        the \"main\" proxy.\n    \
+                        `--sub-proxy /api/,localhost:4500`\n\
+                        Note, this argument can be provided multiple times.")
+                 .long("sub-proxy")
+                 .short("P")
+                 .takes_value(true)
+                 .multiple(true)
+                 .number_of_values(1)))
         .get_matches();
 
     env::set_var("LOG", "info");
@@ -176,60 +179,63 @@ fn run() -> Result<()> {
         env::set_var("LOG", "debug");
     }
 
-    if let Some(matches) = matches.subcommand_matches("self") {
-        match matches.subcommand() {
-            ("update", Some(matches)) => {
-                update(&matches)?;
-            }
-            _ => eprintln!("proxy: see `--help`"),
-        }
-        return Ok(())
-    }
-
-    let proxy_addr = matches.value_of("main-proxy").ok_or_else(|| "Missing <main-proxy> argument. See `--help`")?;
-    if proxy_addr.trim().is_empty() {
-        bail!("Invalid `proxy` address")
-    }
-    let replace_host = matches.value_of("replace_host").map(str::to_owned).unwrap_or_else(|| {
-        proxy_addr.split(":").nth(0).unwrap().to_owned()
-    });
-    let proxy_config = ProxyConfig { addr: proxy_addr.to_owned(), replace_host: Some(replace_host.into()) };
-
-    let host = if matches.is_present("public") { "0.0.0.0" } else { "localhost" };
-    let port = matches.value_of("port").unwrap().parse::<u32>().chain_err(|| "Expected integer")?;
-    let addr = format!("{}:{}", host, port);
-
-    let static_configs: Vec<StaticConfig> = matches.values_of("static-asset").map(|vals| {
-        vals.map(|val| {
-            let parts = val.split(",").collect::<Vec<_>>();
-            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-                bail!("Invalid `--static` format. Expected `<url-prefix>,<path-root>`")
-            }
-            Ok(StaticConfig {
-                prefix: parts[0].to_owned(),
-                directory: parts[1].to_owned(),
-            })
-        }).collect::<Result<Vec<_>>>()
-    }).unwrap_or_else(|| Ok(vec![]))?;
-
-    let subproxy_configs: Vec<SubProxyConfig> = matches.values_of("sub-proxy").map(|proxies| {
-        proxies.map(|proxy| {
-            let parts = proxy.split(",").collect::<Vec<_>>();
-            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-                bail!("Invalid `--sub-proxy` format. Expected `<url-prefix>,<proxy-addr>`")
-            }
-            Ok(SubProxyConfig {
-                prefix: parts[0].to_owned(),
-                proxy: ProxyConfig {
-                    addr: parts[1].to_owned(),
-                    replace_host: Some(parts[1].split(":").nth(0).unwrap().to_owned().into()),
+    match matches.subcommand() {
+        ("self", Some(matches)) => {
+            match matches.subcommand() {
+                ("update", Some(matches)) => {
+                    update(&matches)?;
                 }
-            })
-        }).collect::<Result<Vec<_>>>()
-    }).unwrap_or_else(|| Ok(vec![]))?;
+                _ => eprintln!("proxy: see `--help`"),
+            }
+            return Ok(())
+        }
+        ("serve", Some(matches)) => {
+            let proxy_addr = matches.value_of("main-proxy").expect("required field missing");
+            if proxy_addr.trim().is_empty() {
+                bail!("Invalid `proxy` address")
+            }
+            let replace_host = matches.value_of("replace_host").map(str::to_owned).unwrap_or_else(|| {
+                proxy_addr.split(":").nth(0).unwrap().to_owned()
+            });
+            let proxy_config = ProxyConfig { addr: proxy_addr.to_owned(), replace_host: Some(replace_host.into()) };
 
-    service(&addr, proxy_config, subproxy_configs, static_configs)?;
+            let host = if matches.is_present("public") { "0.0.0.0" } else { "localhost" };
+            let port = matches.value_of("port").unwrap().parse::<u32>().chain_err(|| "Expected integer")?;
+            let addr = format!("{}:{}", host, port);
 
+            let static_configs: Vec<StaticConfig> = matches.values_of("static-asset").map(|vals| {
+                vals.map(|val| {
+                    let parts = val.split(",").collect::<Vec<_>>();
+                    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                        bail!("Invalid `--static` format. Expected `<url-prefix>,<path-root>`")
+                    }
+                    Ok(StaticConfig {
+                        prefix: parts[0].to_owned(),
+                        directory: parts[1].to_owned(),
+                    })
+                }).collect::<Result<Vec<_>>>()
+            }).unwrap_or_else(|| Ok(vec![]))?;
+
+            let subproxy_configs: Vec<SubProxyConfig> = matches.values_of("sub-proxy").map(|proxies| {
+                proxies.map(|proxy| {
+                    let parts = proxy.split(",").collect::<Vec<_>>();
+                    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                        bail!("Invalid `--sub-proxy` format. Expected `<url-prefix>,<proxy-addr>`")
+                    }
+                    Ok(SubProxyConfig {
+                        prefix: parts[0].to_owned(),
+                        proxy: ProxyConfig {
+                            addr: parts[1].to_owned(),
+                            replace_host: Some(parts[1].split(":").nth(0).unwrap().to_owned().into()),
+                        }
+                    })
+                }).collect::<Result<Vec<_>>>()
+            }).unwrap_or_else(|| Ok(vec![]))?;
+
+            service(&addr, proxy_config, subproxy_configs, static_configs)?;
+        }
+        _ => eprintln!("proxy: see `--help`"),
+    };
     Ok(())
 }
 
