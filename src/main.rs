@@ -109,8 +109,9 @@ fn service(addr: &str, proxy_config: ProxyConfig<String>,
 fn run() -> Result<()> {
     let matches = App::new("Proxy")
         .version(crate_version!())
-        .about("Proxy server\n \
-                Command-line proxy intended for testing and development purposes. \
+        .author("James K. <james.kominick@gmail.com>")
+        .about("Repository: https://github.com/jaemk/proxy\n\
+                Command-line proxy server for testing and development purposes. \
                 Supports proxying requests and serving static files.")
         .subcommand(SubCommand::with_name("self")
             .about("Self referential things")
