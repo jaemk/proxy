@@ -6,7 +6,11 @@
 
 > command-line proxy server
 
-Note, this is intended for development purposes as a quick stand-in for a real proxy server.
+This tool is intended for:
+
+- A quick stand-in for a real proxy server (For development purposes only).
+- A **very simple** static site/file server
+
 
 ## Installation
 
@@ -25,6 +29,8 @@ Updates:
 
 ## Usage
 
+**Development proxy**
+
 ```bash
 # - listen on `localhost:3000`
 # - serve requests starting with `/static/` from the relative path `static/`
@@ -41,5 +47,22 @@ proxy serve \
     --sub-proxy /api/,localhost:4001 \
     -P /status/,localhost:4002 \
     localhost:3002
+```
+
+
+**Static site server**
+
+```bash
+# - generate crate documentation
+cargo doc
+
+# - serve / request with target/doc/<crate>/index.html
+# - serve static files starting with "/" from target/doc
+# - serve static files starting with "/" from target/doc/<crate>
+cd target/doc
+proxy serve . \
+    --file /,<crate>/index.html,text/html \
+    --static /,. \
+    --static /,<crate>
 ```
 
