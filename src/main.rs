@@ -107,9 +107,9 @@ fn service(addr: &str,
     info!("** Serving on {:?} **", addr);
     info!("** Proxying to {:?} **", proxy_config.addr);
     info!("** Setting `Host` header: {:?} **", proxy_config.replace_host.as_ref().expect("missing replace_host"));
-    info!("** Serving sub-proxies: {:?} **", subproxy_configs);
-    info!("** Serving static dirs: {:?} **", static_configs);
     info!("** Serving exact files: {:?} **", file_configs);
+    info!("** Serving static dirs: {:?} **", static_configs);
+    info!("** Serving sub-proxies: {:?} **", subproxy_configs);
 
     rouille::start_server(&addr, move |request| {
         let start = time::Instant::now();
@@ -151,8 +151,10 @@ fn run() -> Result<()> {
                      .short("q")
                      .takes_value(false))))
         .subcommand(SubCommand::with_name("serve")
-            .about("Run a proxy server\n\
-                    Request handling precendence:\n  \
+            .about("Run a proxy server")
+            .help("Run a proxy server\n\
+                   Request handling precendence:\n  \
+                    - Exact files\n  \
                     - Static files\n  \
                     - Routing to sub-proxies\n  \
                     - Routing to the \"main\" proxy")
