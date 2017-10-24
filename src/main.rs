@@ -74,8 +74,7 @@ fn route_request(request: &Request,
             let asset_request = request.remove_prefix(&config.prefix)
                 .ok_or_else(|| ErrorKind::UrlPrefix(format!("Failed stripping prefix: {}", &config.prefix)))?;
             let resp = rouille::match_assets(&asset_request, &config.directory);
-            if resp.is_success() { continue }
-            return Ok(resp)
+            if resp.is_success() { return Ok(resp) }
         }
     }
     for config in subproxy_configs {
