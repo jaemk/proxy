@@ -59,10 +59,9 @@ cargo doc
 # - serve / request with target/doc/<crate>/index.html
 # - serve static files starting with "/" from target/doc
 # - serve static files starting with "/" from target/doc/<crate>
-cd target/doc
 proxy serve . \
-    --file /,<crate>/index.html,text/html \
-    --static /,. \
-    --static /,<crate>
+    --file /,target/doc/<crate>/index.html,text/html \
+    --static /,target/doc \
+    --static /,target/doc/<crate>
 ```
 
