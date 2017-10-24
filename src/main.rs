@@ -11,6 +11,8 @@ extern crate self_update;
 
 use std::env;
 use std::time;
+use std::fs;
+use std::io;
 use chrono::Local;
 use clap::{Arg, App, SubCommand, ArgMatches};
 use rouille::{Request, Response};
@@ -19,6 +21,7 @@ use rouille::proxy::ProxyConfig;
 
 error_chain! {
     foreign_links {
+        Io(io::Error);
         LogInit(log::SetLoggerError);
         Proxy(rouille::proxy::FullProxyError);
         SelfUpdate(self_update::errors::Error) #[cfg(feature="update")];
@@ -29,6 +32,14 @@ error_chain! {
             display("UrlPrefix Error: {}", s)
         }
     }
+}
+
+
+#[derive(Debug, Clone)]
+struct FileConfig {
+    url: String,
+    file_path: String,
+    content_type: String,
 }
 
 
@@ -47,10 +58,17 @@ struct SubProxyConfig {
 
 
 fn route_request(request: &Request,
+                 file_configs: &[FileConfig],
                  static_configs: &[StaticConfig],
                  subproxy_configs: &[SubProxyConfig],
                  proxy_config: &ProxyConfig<String>) -> Result<Response> {
     let url = request.url();
+    for config in file_configs {
+        if url == config.url {
+            let file = fs::File::open(&config.file_path)?;
+            return Ok(rouille::Response::from_file(config.content_type.clone(), file))
+        }
+    }
     for config in static_configs {
         if url.starts_with(&config.prefix) {
             let asset_request = request.remove_prefix(&config.prefix)
@@ -67,9 +85,11 @@ fn route_request(request: &Request,
 }
 
 
-fn service(addr: &str, proxy_config: ProxyConfig<String>,
+fn service(addr: &str,
+           proxy_config: ProxyConfig<String>,
            subproxy_configs: Vec<SubProxyConfig>,
-           static_configs: Vec<StaticConfig>) -> Result<()> {
+           static_configs: Vec<StaticConfig>,
+           file_configs: Vec<FileConfig>) -> Result<()> {
     env_logger::LogBuilder::new()
         .format(|record| {
             format!("{} [{}] - [{}] -> {}",
@@ -87,11 +107,12 @@ fn service(addr: &str, proxy_config: ProxyConfig<String>,
     info!("** Setting `Host` header: {:?} **", proxy_config.replace_host.as_ref().expect("missing replace_host"));
     info!("** Serving sub-proxies: {:?} **", subproxy_configs);
     info!("** Serving static dirs: {:?} **", static_configs);
+    info!("** Serving exact files: {:?} **", file_configs);
 
     rouille::start_server(&addr, move |request| {
         let start = time::Instant::now();
 
-        let response = match route_request(request, &static_configs, &subproxy_configs, &proxy_config) {
+        let response = match route_request(request, &file_configs, &static_configs, &subproxy_configs, &proxy_config) {
             Ok(resp) => resp,
             Err(_) => {
                 Response::text("Something went wrong").with_status_code(500)
@@ -162,6 +183,17 @@ fn run() -> Result<()> {
                  .takes_value(true)
                  .multiple(true)
                  .number_of_values(1))
+            .arg(Arg::with_name("exact-file")
+                 .help("Url of direct-file-requests and the associated file to return. \
+                        Formatted as `<exact-url>,<file-path>,<content-type>`.\n\
+                        E.g. Return `static/index.html` for requests to `/`:\n    \
+                        `--file /,static/index.html,text/html`\n\
+                        Note, this argument can be provided multiple times.")
+                 .long("file")
+                 .short("f")
+                 .takes_value(true)
+                 .multiple(true)
+                 .number_of_values(1))
             .arg(Arg::with_name("sub-proxy")
                  .help("Url prefix of sub-proxy-requests and the address to route requests to. \
                         The url will not be altered when proxied. \
@@ -206,6 +238,20 @@ fn run() -> Result<()> {
             let port = matches.value_of("port").unwrap().parse::<u32>().chain_err(|| "Expected integer")?;
             let addr = format!("{}:{}", host, port);
 
+            let file_configs: Vec<FileConfig> = matches.values_of("exact-file").map(|vals| {
+                vals.map(|val| {
+                    let parts = val.split(",").collect::<Vec<_>>();
+                    if parts.len() != 3 || parts.iter().any(|s| s.is_empty()) {
+                        bail!("Invalid `--file` format. Expected `<exact-url>,<file-path>,<content-type>`")
+                    }
+                    Ok(FileConfig {
+                        url: parts[0].to_owned(),
+                        file_path: parts[1].to_owned(),
+                        content_type: parts[2].to_owned(),
+                    })
+                }).collect::<Result<Vec<_>>>()
+            }).unwrap_or_else(|| Ok(vec![]))?;
+
             let static_configs: Vec<StaticConfig> = matches.values_of("static-asset").map(|vals| {
                 vals.map(|val| {
                     let parts = val.split(",").collect::<Vec<_>>();
@@ -235,7 +281,7 @@ fn run() -> Result<()> {
                 }).collect::<Result<Vec<_>>>()
             }).unwrap_or_else(|| Ok(vec![]))?;
 
-            service(&addr, proxy_config, subproxy_configs, static_configs)?;
+            service(&addr, proxy_config, subproxy_configs, static_configs, file_configs)?;
         }
         _ => eprintln!("proxy: see `--help`"),
     };
