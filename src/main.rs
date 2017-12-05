@@ -150,32 +150,38 @@ fn run() -> Result<()> {
                      .short("q")
                      .takes_value(false))))
         .subcommand(SubCommand::with_name("serve")
-            .about("Run a proxy server")
-            .help("Run a proxy server\n\
-                   Request handling precendence:\n  \
-                    - Exact files\n  \
-                    - Static files\n  \
-                    - Routing to sub-proxies\n  \
-                    - Routing to the \"main\" proxy")
-            .arg(Arg::with_name("main-proxy")
-                 .help("Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
-                 .takes_value(true)
-                 .required(true))
+            .about("Run a proxy server, serving assets in ascending priority")
+            .arg(Arg::with_name("public")
+                 .display_order(1)
+                 .long("public")
+                 .help("Listen on `0.0.0.0` instead of `localhost`"))
             .arg(Arg::with_name("debug")
+                 .display_order(2)
                  .help("Print debug info")
                  .long("debug")
                  .takes_value(false))
             .arg(Arg::with_name("port")
+                 .display_order(0)
                  .help("Port to listen on")
                  .long("port")
                  .short("p")
                  .takes_value(true)
                  .default_value("3000"))
-            .arg(Arg::with_name("public")
-                 .long("public")
-                 .help("Listen on `0.0.0.0` instead of `localhost`"))
+            .arg(Arg::with_name("exact-file")
+                 .display_order(1)
+                 .help("[- Priority 1 -] Url of direct-file-requests and the associated file to return. \
+                        Formatted as `<exact-url>,<file-path>,<content-type>`.\n\
+                        E.g. Return `static/index.html` for requests to `/`:\n    \
+                        `--file /,static/index.html,text/html`\n\
+                        Note, this argument can be provided multiple times.")
+                 .long("file")
+                 .short("f")
+                 .takes_value(true)
+                 .multiple(true)
+                 .number_of_values(1))
             .arg(Arg::with_name("static-asset")
-                 .help("Url prefix of static-asset-requests and the associated directory to serve files from. \
+                 .display_order(2)
+                 .help("[- Priority 2 -] Url prefix of static-asset-requests and the associated directory to serve files from. \
                         The url prefix will be stripped before looking in the specified directory. \
                         Formatted as `<url-prefix>,<directory>`.\n\
                         E.g. Serve requests starting with `/static/` from the relative directory `static`:\n    \
@@ -186,19 +192,9 @@ fn run() -> Result<()> {
                  .takes_value(true)
                  .multiple(true)
                  .number_of_values(1))
-            .arg(Arg::with_name("exact-file")
-                 .help("Url of direct-file-requests and the associated file to return. \
-                        Formatted as `<exact-url>,<file-path>,<content-type>`.\n\
-                        E.g. Return `static/index.html` for requests to `/`:\n    \
-                        `--file /,static/index.html,text/html`\n\
-                        Note, this argument can be provided multiple times.")
-                 .long("file")
-                 .short("f")
-                 .takes_value(true)
-                 .multiple(true)
-                 .number_of_values(1))
             .arg(Arg::with_name("sub-proxy")
-                 .help("Url prefix of sub-proxy-requests and the address to route requests to. \
+                 .display_order(3)
+                 .help("[- Priority 3 -] Url prefix of sub-proxy-requests and the address to route requests to. \
                         The url will not be altered when proxied. \
                         Formatted as `<url-prefix>,<address>`.\n\
                         E.g. Proxy requests starting with `/api/` to `localhost:4500` instead of \
@@ -209,7 +205,12 @@ fn run() -> Result<()> {
                  .short("P")
                  .takes_value(true)
                  .multiple(true)
-                 .number_of_values(1)))
+                 .number_of_values(1))
+            .arg(Arg::with_name("main-proxy")
+                 .display_order(4)
+                 .help("[- Priority 4 -] Address to proxy requests to. Formatted as <hostname>:<port>, e.g. `localhost:3002`")
+                 .takes_value(true)
+                 .required(true)))
         .get_matches();
 
     env::set_var("LOG", "info");
