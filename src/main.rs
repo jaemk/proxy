@@ -12,7 +12,7 @@ extern crate self_update;
 use std::env;
 use std::time;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use chrono::Local;
 use clap::{Arg, App, SubCommand, ArgMatches};
 use rouille::{Request, Response};
@@ -91,17 +91,17 @@ fn service(addr: &str,
            subproxy_configs: Vec<SubProxyConfig>,
            static_configs: Vec<StaticConfig>,
            file_configs: Vec<FileConfig>) -> Result<()> {
-    env_logger::LogBuilder::new()
-        .format(|record| {
-            format!("{} [{}] - [{}] -> {}",
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf, "{} [{}] - [{}] -> {}",
                 Local::now().format("%Y-%m-%d_%H:%M:%S"),
                 record.level(),
-                record.location().module_path(),
+                record.module_path().unwrap_or("<unknown>"),
                 record.args()
                 )
             })
     .parse(&env::var("LOG").unwrap_or_default())
-    .init()?;
+    .init();
 
     info!("** Serving on {:?} **", addr);
     info!("** Proxying to {:?} **", proxy_config.addr);
@@ -109,21 +109,30 @@ fn service(addr: &str,
     info!("** Serving exact files: {:?} **", file_configs);
     info!("** Serving static dirs: {:?} **", static_configs);
     info!("** Serving sub-proxies: {:?} **", subproxy_configs);
-
     rouille::start_server(&addr, move |request| {
-        let start = time::Instant::now();
+        let proxy_config        = &proxy_config;
+        let subproxy_configs    = &subproxy_configs;
+        let static_configs      = &static_configs;
+        let file_configs        = &file_configs;
 
-        let response = match route_request(request, &file_configs, &static_configs, &subproxy_configs, &proxy_config) {
-            Ok(resp) => resp,
-            Err(_) => {
-                Response::text("Something went wrong").with_status_code(500)
-            }
+        let now = Local::now().format("%Y-%m-%d %H:%M%S");
+        let log_ok = |req: &rouille::Request, resp: &rouille::Response, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] {} {} -> {} ({}ms)", now, req.method(), req.raw_url(), resp.status_code, ms)
+        };
+        let log_err = |req: &rouille::Request, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] Handler Panicked: {} {} ({}ms)", now, req.method(), req.raw_url(), ms)
         };
 
-        let elapsed = start.elapsed();
-        let elapsed = (elapsed.as_secs() * 1_000) as f32 + (elapsed.subsec_nanos() as f32 / 1_000_000.);
-        info!("[{}] {} {:?} {}ms", request.method(), response.status_code, request.url(), elapsed);
-        response
+        rouille::log_custom(request, log_ok, log_err, move || {
+            match route_request(request, file_configs, static_configs, subproxy_configs, proxy_config) {
+                Ok(resp) => resp,
+                Err(_) => {
+                    Response::text("Something went wrong").with_status_code(500)
+                }
+            }
+        })
     });
 }
 
