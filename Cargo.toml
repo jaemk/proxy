@@ -6,13 +6,13 @@ license = "MIT"
 description = "cli proxy server"
 repository = "https://github.com/jaemk/proxy"
 readme = "README.md"
-keywords = ["cli", "proxy"]
+keywords = ["cli", "proxy", "file", "server", "static"]
 categories = ["command-line-utilities", "development-tools", "web-programming"]
 exclude = [
-    "static",
-    "media",
-    "assets",
-    "ci",
+    "/static/",
+    "/media/",
+    "/assets/",
+    "/ci/",
 ]
 
 [[bin]]
