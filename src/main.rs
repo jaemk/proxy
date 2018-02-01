@@ -8,6 +8,7 @@ extern crate chrono;
 extern crate rouille;
 #[cfg(feature="update")]
 extern crate self_update;
+extern crate walkdir;
 
 use std::env;
 use std::time;
@@ -25,6 +26,7 @@ error_chain! {
         LogInit(log::SetLoggerError);
         Proxy(rouille::proxy::FullProxyError);
         SelfUpdate(self_update::errors::Error) #[cfg(feature="update")];
+        StripPathPrefix(std::path::StripPrefixError);
     }
     errors {
         UrlPrefix(s: String) {
@@ -57,7 +59,7 @@ struct SubProxyConfig {
 }
 
 
-fn route_request(request: &Request,
+fn proxy_request(request: &Request,
                  file_configs: &[FileConfig],
                  static_configs: &[StaticConfig],
                  subproxy_configs: &[SubProxyConfig],
@@ -86,23 +88,11 @@ fn route_request(request: &Request,
 }
 
 
-fn service(addr: &str,
+fn proxy_service(addr: &str,
            proxy_config: ProxyConfig<String>,
            subproxy_configs: Vec<SubProxyConfig>,
            static_configs: Vec<StaticConfig>,
            file_configs: Vec<FileConfig>) -> Result<()> {
-    env_logger::Builder::new()
-        .format(|buf, record| {
-            writeln!(buf, "{} [{}] - [{}] -> {}",
-                Local::now().format("%Y-%m-%d_%H:%M:%S"),
-                record.level(),
-                record.module_path().unwrap_or("<unknown>"),
-                record.args()
-                )
-            })
-    .parse(&env::var("LOG").unwrap_or_default())
-    .init();
-
     info!("** Serving on {:?} **", addr);
     info!("** Proxying to {:?} **", proxy_config.addr);
     info!("** Setting `Host` header: {:?} **", proxy_config.replace_host.as_ref().expect("missing replace_host"));
@@ -126,9 +116,74 @@ fn service(addr: &str,
         };
 
         rouille::log_custom(request, log_ok, log_err, move || {
-            match route_request(request, file_configs, static_configs, subproxy_configs, proxy_config) {
+            match proxy_request(request, file_configs, static_configs, subproxy_configs, proxy_config) {
                 Ok(resp) => resp,
-                Err(_) => {
+                Err(e) => {
+                    error!("ProxyServiceError: {}", e);
+                    Response::text("Something went wrong").with_status_code(500)
+                }
+            }
+        })
+    });
+}
+
+
+fn to_html(links: &[String]) -> String {
+    let mut hrefs = String::new();
+    for link in links[1..].iter() {
+        hrefs.push_str(&format!("<li><a href=\"{link}\">{link}</a></li>\n", link=link));
+    }
+    let mut cur_dir = links[0].to_string();
+    if !cur_dir.ends_with("/") { cur_dir.push('/'); }
+    format!("<meta charset=\"UTF-8\">\
+            <html><body>\
+                <h1>{}</h1>\
+                <ul>{}</ul>\
+            </body></html>", cur_dir, hrefs)
+}
+
+fn fs_request(request: &Request, base_dir: &std::path::Path) -> Result<Response> {
+    let resp = rouille::match_assets(&request, base_dir);
+    if resp.is_success() { return Ok(resp.with_unique_header("Content-Type", "text/plain;charset=ISO-8859-1")); }
+
+    let path = base_dir.join(std::path::Path::new(&request.url().trim_left_matches("/")));
+    let path = path.canonicalize()?;
+    if !path.starts_with(base_dir) {
+        bail!("Attempt to access parent directories");
+    }
+    let walker = walkdir::WalkDir::new(&path).max_depth(1).into_iter();
+    let mut links = vec![];
+    for entry in walker.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let is_dir = path.is_dir();
+        let mut path = String::from("/") + &path.strip_prefix(base_dir)?.display().to_string();
+        if is_dir && !path.starts_with("/") { path.push('/'); }
+        links.push(path);
+    }
+    let html = to_html(&links);
+    Ok(Response::html(html))
+}
+
+fn fs_service(addr: &str, base_dir: &std::path::Path) -> Result<()> {
+    info!("** Serving on {:?} **", addr);
+    info!("** Serving from: {:?} **", base_dir);
+    let base_dir = base_dir.to_owned();
+    rouille::start_server(addr, move |request| {
+        let base_dir = &base_dir;
+        let now = Local::now().format("%Y-%m-%d %H:%M%S");
+        let log_ok = |req: &rouille::Request, resp: &rouille::Response, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] {} {} -> {} ({}ms)", now, req.method(), req.raw_url(), resp.status_code, ms)
+        };
+        let log_err = |req: &rouille::Request, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] Handler Panicked: {} {} ({}ms)", now, req.method(), req.raw_url(), ms)
+        };
+        rouille::log_custom(request, log_ok, log_err, move || {
+            match fs_request(request, &base_dir) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("FsServiceError: {}", e);
                     Response::text("Something went wrong").with_status_code(500)
                 }
             }
@@ -158,6 +213,30 @@ fn run() -> Result<()> {
                      .long("quiet")
                      .short("q")
                      .takes_value(false))))
+        .subcommand(SubCommand::with_name("fs")
+            .about("Run a file server in the specified directory")
+            .arg(Arg::with_name("public")
+                 .display_order(1)
+                 .long("public")
+                 .help("Listen on `0.0.0.0` instead of `localhost`"))
+            .arg(Arg::with_name("debug")
+                 .display_order(2)
+                 .help("Print debug info")
+                 .long("debug")
+                 .takes_value(false))
+            .arg(Arg::with_name("port")
+                 .display_order(0)
+                 .help("Port to listen on")
+                 .long("port")
+                 .short("p")
+                 .takes_value(true)
+                 .default_value("3000"))
+            .arg(Arg::with_name("directory")
+                 .help("Directory to serve root request from.\n\
+                        E.g. Start a file server in the current dir:\n\
+                        `proxy fs .`")
+                 .takes_value(true)
+                 .required(true)))
         .subcommand(SubCommand::with_name("serve")
             .about("Run a proxy server, serving assets in ascending priority")
             .arg(Arg::with_name("public")
@@ -227,6 +306,18 @@ fn run() -> Result<()> {
         env::set_var("LOG", "debug");
     }
 
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf, "{} [{}] - [{}] -> {}",
+                Local::now().format("%Y-%m-%d_%H:%M:%S"),
+                record.level(),
+                record.module_path().unwrap_or("<unknown>"),
+                record.args()
+                )
+            })
+    .parse(&env::var("LOG").unwrap_or_default())
+    .init();
+
     match matches.subcommand() {
         ("self", Some(matches)) => {
             match matches.subcommand() {
@@ -236,6 +327,13 @@ fn run() -> Result<()> {
                 _ => eprintln!("proxy: see `--help`"),
             }
             return Ok(())
+        }
+        ("fs", Some(matches)) => {
+            let host = if matches.is_present("public") { "0.0.0.0" } else { "localhost" };
+            let port = matches.value_of("port").unwrap().parse::<u32>().chain_err(|| "Expected integer")?;
+            let addr = format!("{}:{}", host, port);
+            let dir = std::path::Path::new(matches.value_of("directory").expect("required field missing")).canonicalize()?;
+            fs_service(&addr, &dir)?;
         }
         ("serve", Some(matches)) => {
             let proxy_addr = matches.value_of("main-proxy").expect("required field missing");
@@ -294,7 +392,7 @@ fn run() -> Result<()> {
                 }).collect::<Result<Vec<_>>>()
             }).unwrap_or_else(|| Ok(vec![]))?;
 
-            service(&addr, proxy_config, subproxy_configs, static_configs, file_configs)?;
+            proxy_service(&addr, proxy_config, subproxy_configs, static_configs, file_configs)?;
         }
         _ => eprintln!("proxy: see `--help`"),
     };

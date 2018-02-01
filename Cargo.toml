@@ -28,6 +28,7 @@ travis-ci = { repository = "jaemk/proxy", branch = "master" }
 # For new `router!` syntax and `log_custom`
 rouille = { git = "https://github.com/tomaka/rouille", rev = "b1b88b1748771a334a78e53c9cc7b21d35bdfa53" }
 
+walkdir = "2"
 log = "0.4"
 env_logger = "0.5"
 chrono = "0.4"
