@@ -9,10 +9,10 @@ readme = "README.md"
 keywords = ["cli", "proxy", "file", "server", "static"]
 categories = ["command-line-utilities", "development-tools", "web-programming"]
 exclude = [
-    "/static/",
-    "/media/",
-    "/assets/",
-    "/ci/",
+    "/static/*",
+    "/media/*",
+    "/assets/*",
+    "/ci/*",
 ]
 
 [[bin]]
