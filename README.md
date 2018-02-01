@@ -49,7 +49,6 @@ proxy serve \
     localhost:3002
 ```
 
-
 **Static site server**
 
 ```bash
@@ -63,5 +62,12 @@ proxy serve . \
     --file /,target/doc/<crate>/index.html,text/html \
     --static /,target/doc \
     --static /,target/doc/<crate>
+```
+
+**Static file server**
+
+```bash
+# - serve static files from the current directory
+proxy fs .
 ```
 
