@@ -1,6 +1,6 @@
 [package]
 name = "cli-proxy"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["James Kominick <james.kominick@gmail.com>"]
 license = "MIT"
 description = "cli proxy server"
