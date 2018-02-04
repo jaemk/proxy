@@ -33,6 +33,10 @@ error_chain! {
             description("Failed stripping url prefix")
             display("UrlPrefix Error: {}", s)
         }
+        DoesNotExist(s: String) {
+            description("Does not exist")
+            display("DoesNotExist: {}", s)
+        }
     }
 }
 
@@ -147,7 +151,8 @@ fn fs_request(request: &Request, base_dir: &std::path::Path) -> Result<Response>
     if resp.is_success() { return Ok(resp.with_unique_header("Content-Type", "text/plain;charset=ISO-8859-1")); }
 
     let path = base_dir.join(std::path::Path::new(&request.url().trim_left_matches("/")));
-    let path = path.canonicalize()?;
+    let path = path.canonicalize()
+        .map_err(|_| ErrorKind::DoesNotExist(path.display().to_string()))?;
     if !path.starts_with(base_dir) {
         bail!("Attempt to access parent directories");
     }
@@ -186,7 +191,14 @@ fn fs_service(addr: &str, base_dir: &std::path::Path) -> Result<()> {
                 Ok(resp) => resp,
                 Err(e) => {
                     error!("FsServiceError: {}", e);
-                    Response::text("Something went wrong").with_status_code(500)
+                    match e.kind() {
+                        &ErrorKind::DoesNotExist(_) => {
+                            Response::text("Not Found").with_status_code(404)
+                        }
+                        _ => {
+                            Response::text("Something went wrong").with_status_code(500)
+                        }
+                    }
                 }
             }
         })
