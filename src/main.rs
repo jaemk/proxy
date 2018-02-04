@@ -105,18 +105,25 @@ fn proxy_service(addr: &str,
         let static_configs      = &static_configs;
         let file_configs        = &file_configs;
 
-        let start = time::Instant::now();
-        let resp = match proxy_request(request, file_configs, static_configs, subproxy_configs, proxy_config) {
-            Ok(resp) => resp,
-            Err(e) => {
-                error!("ProxyServiceError: {}", e);
-                Response::text("Something went wrong").with_status_code(500)
-            }
+        let now = Local::now().format("%Y-%m-%d %H:%M%S");
+        let log_ok = |req: &rouille::Request, resp: &rouille::Response, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] {} {} -> {} ({}ms)", now, req.method(), req.raw_url(), resp.status_code, ms)
         };
-        let elapsed = start.elapsed();
-        let elapsed = (elapsed.as_secs() * 1_000) as f32 + (elapsed.subsec_nanos() as f32 / 1_000_000.);
-        info!("[{}] {} {:?} {}ms", request.method(), resp.status_code, request.url(), elapsed);
-        resp
+        let log_err = |req: &rouille::Request, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] Handler Panicked: {} {} ({}ms)", now, req.method(), req.raw_url(), ms)
+        };
+        // dispatch and handle errors
+        rouille::log_custom(request, log_ok, log_err, move || {
+            match proxy_request(request, file_configs, static_configs, subproxy_configs, proxy_config) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("ProxyServiceError: {}", e);
+                    Response::text("Something went wrong").with_status_code(500)
+                }
+            }
+        })
     });
 }
 
@@ -163,18 +170,26 @@ fn fs_service(addr: &str, base_dir: &std::path::Path) -> Result<()> {
     let base_dir = base_dir.to_owned();
     rouille::start_server(addr, move |request| {
         let base_dir = &base_dir;
-        let start = time::Instant::now();
-        let resp = match fs_request(request, &base_dir) {
-            Ok(resp) => resp,
-            Err(e) => {
-                error!("FsServiceError: {}", e);
-                Response::text("Something went wrong").with_status_code(500)
-            }
+        let now = Local::now().format("%Y-%m-%d %H:%M%S");
+        let log_ok = |req: &rouille::Request, resp: &rouille::Response, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] {} {} -> {} ({}ms)", now, req.method(), req.raw_url(), resp.status_code, ms)
         };
-        let elapsed = start.elapsed();
-        let elapsed = (elapsed.as_secs() * 1_000) as f32 + (elapsed.subsec_nanos() as f32 / 1_000_000.);
-        info!("[{}] {} {:?} {}ms", request.method(), resp.status_code, request.url(), elapsed);
-        resp
+        let log_err = |req: &rouille::Request, elap: time::Duration| {
+            let ms = (elap.as_secs() * 1_000) as f32 + (elap.subsec_nanos() as f32 / 1_000_000.);
+            info!("[{}] Handler Panicked: {} {} ({}ms)", now, req.method(), req.raw_url(), ms)
+        };
+        // dispatch and handle errors
+        rouille::log_custom(request, log_ok, log_err, move || {
+            let base_dir = &base_dir;
+            match fs_request(request, &base_dir) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("FsServiceError: {}", e);
+                    Response::text("Something went wrong").with_status_code(500)
+                }
+            }
+        })
     });
 }
 

@@ -24,7 +24,7 @@ doc = false
 travis-ci = { repository = "jaemk/proxy", branch = "master" }
 
 [dependencies]
-rouille = "1"
+rouille = "2"
 walkdir = "2"
 log = "0.4"
 env_logger = "0.5"
