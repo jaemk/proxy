@@ -162,7 +162,7 @@ fn fs_request(request: &Request, base_dir: &std::path::Path) -> Result<Response>
         let path = entry.path();
         let is_dir = path.is_dir();
         let mut path = String::from("/") + &path.strip_prefix(base_dir)?.display().to_string();
-        if is_dir && !path.starts_with("/") { path.push('/'); }
+        if is_dir && !path.ends_with("/") { path.push('/'); }
         links.push(path);
     }
     let html = to_html(&links);
