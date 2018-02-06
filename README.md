@@ -14,18 +14,24 @@ This tool is intended for:
 
 ## Installation
 
-See [`releases`](https://github.com/jaemk/proxy/releases),
+**Pre-compiled executables**
 
-`cargo install cli-proxy`,
+See [`releases`](https://github.com/jaemk/proxy/releases)
 
-Or build from source:
+
+**Build from crates.io**
+
+`cargo install cli-proxy`
+
+**Build from source**
+
 - clone this repo
 - `cargo build --release`
 
-Updates:
-- Self update functionality (from `github` releases) is available behind `--features update`
+## Updates
+- Self update functionality (from GitHub releases) is available behind `--features update`
 - Binary [`releases`](https://github.com/jaemk/proxy/releases) are compiled with the `update` feature
-- `proxy self update`
+- If you've downloaded a binary release, you can update to latest GitHub release via: `proxy self update`
 
 ## Usage
 
